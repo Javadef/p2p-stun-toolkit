@@ -358,6 +358,7 @@ async def game_menu(mesh: MeshNetwork):
     # Set up a listener for incoming invites when no game is active
     def handle_invite(from_ip: str, data):
         nonlocal ttt, quiz, current_game
+        print(f"[DEBUG] Received message from {from_ip}: {data}")  # Debug line
         if isinstance(data, dict) and data.get('msg_type') == 'game_invite':
             game_type = data.get('game_type')
             if game_type == 'tictactoe':
