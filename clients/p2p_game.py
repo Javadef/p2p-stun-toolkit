@@ -61,7 +61,7 @@ class P2PGame:
     def _on_invite(self, from_ip: str, data: dict):
         """Handle game invitation"""
         print(f"\n🎮 Game invite from {from_ip}: {data.get('game_type')}")
-        print(f"   Type 'accept' to join!")
+        print(f"   Type '/accept' to join!")
         self.pending_invite = (from_ip, data)
     
     def _on_accept(self, from_ip: str, data: dict):
@@ -77,10 +77,15 @@ class P2PGame:
         pass
     
     def _on_state_update(self, from_ip: str, data: dict):
-        """Handle state update from host"""
+        """Handle state update from host - override in subclass for custom handling"""
         if not self.is_host:
             self.game_state = GameState(**data.get('state', {}))
+            self._sync_from_state()
             self._render_game()
+    
+    def _sync_from_state(self):
+        """Sync local state from game_state - override in subclass"""
+        pass
     
     async def _broadcast_state(self):
         """Broadcast game state to all players"""
@@ -153,13 +158,15 @@ class TicTacToe(P2PGame):
         super().__init__(mesh)
         self.board = [[self.EMPTY] * 3 for _ in range(3)]
         self.symbols = {}  # player_ip -> X or O
+        self.host_ip = None  # Track the host's IP
     
     async def start_game(self):
         """Start a new Tic-Tac-Toe game"""
         await self.invite('tictactoe')
         self.board = [[self.EMPTY] * 3 for _ in range(3)]
-        self.game_state.data = {'board': self.board}
+        self.game_state.data = {'board': self.board, 'host': self.mesh.virtual_ip}
         self.symbols[self.mesh.virtual_ip] = 'X'
+        self.host_ip = self.mesh.virtual_ip
         print("⏳ Waiting for opponent...")
     
     def _on_accept(self, from_ip: str, data: dict):
@@ -167,6 +174,18 @@ class TicTacToe(P2PGame):
         self.symbols[from_ip] = 'O'
         self._render_game()
         print(f"\n🎮 Game started! You are X. Your turn!")
+    
+    def _sync_from_state(self):
+        """Sync board and symbols from host's state"""
+        if self.game_state and self.game_state.data:
+            board_data = self.game_state.data.get('board')
+            if board_data:
+                self.board = board_data
+            host = self.game_state.data.get('host')
+            if host:
+                self.host_ip = host
+                self.symbols[host] = 'X'
+                self.symbols[self.mesh.virtual_ip] = 'O'
     
     def _on_move(self, from_ip: str, data: dict):
         move = data.get('move', {})
@@ -332,9 +351,31 @@ async def game_menu(mesh: MeshNetwork):
     print("  /quit       - Exit")
     print("="*50)
     
-    ttt = TicTacToe(mesh)
-    quiz = QuizGame(mesh)
+    ttt = None
+    quiz = None
     current_game = None
+    
+    # Set up a listener for incoming invites when no game is active
+    def handle_invite(from_ip: str, data):
+        nonlocal ttt, quiz, current_game
+        if isinstance(data, dict) and data.get('msg_type') == 'game_invite':
+            game_type = data.get('game_type')
+            if game_type == 'tictactoe':
+                ttt = TicTacToe(mesh)
+                ttt._on_invite(from_ip, data)
+                current_game = ttt
+            elif game_type == 'quiz':
+                quiz = QuizGame(mesh)
+                quiz._on_invite(from_ip, data)
+                current_game = quiz
+            else:
+                print(f"\n🎮 Unknown game invite: {game_type}")
+        elif isinstance(data, dict) and data.get('type') == 'chat':
+            print(f"\n💬 [{from_ip}]: {data.get('msg')}")
+        elif isinstance(data, str):
+            print(f"\n💬 [{from_ip}]: {data}")
+    
+    mesh.on_message = handle_invite
     
     loop = asyncio.get_event_loop()
     while True:
@@ -342,22 +383,29 @@ async def game_menu(mesh: MeshNetwork):
             cmd = await loop.run_in_executor(None, input, "\n> ")
             
             if cmd.startswith('/tictactoe'):
+                ttt = TicTacToe(mesh)
                 current_game = ttt
                 await ttt.start_game()
             
             elif cmd.startswith('/quiz'):
+                quiz = QuizGame(mesh)
                 current_game = quiz
                 await quiz.start_quiz()
             
             elif cmd.startswith('/accept'):
-                if current_game:
+                if current_game and hasattr(current_game, 'pending_invite'):
                     await current_game.accept_invite()
                 else:
-                    # Try to accept with ttt by default
-                    ttt.pending_invite = getattr(ttt, 'pending_invite', None) or getattr(quiz, 'pending_invite', None)
-                    if ttt.pending_invite:
+                    # Create appropriate game based on pending invite type
+                    # We need a temporary handler to catch invites
+                    if ttt and hasattr(ttt, 'pending_invite'):
                         current_game = ttt
                         await ttt.accept_invite()
+                    elif quiz and hasattr(quiz, 'pending_invite'):
+                        current_game = quiz
+                        await quiz.accept_invite()
+                    else:
+                        print("❌ No pending invite. Wait for an invite first.")
             
             elif cmd.startswith('/move'):
                 if isinstance(current_game, TicTacToe):
