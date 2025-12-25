@@ -80,10 +80,12 @@ class WebGame:
             
         elif msg_type == 'game_accept':
             # Someone accepted our invite
+            print(f"[ACCEPT] game_state={self.game_state}, is_host={self.game_state.is_host if self.game_state else 'N/A'}")
             if self.game_state and self.game_state.is_host:
                 self.game_state.players.append(from_ip)
                 self.game_state.game_started = True
                 self.game_state.current_turn = self.mesh.virtual_ip  # Host goes first
+                print(f"[ACCEPT] Game started! Turn: {self.game_state.current_turn}, My IP: {self.mesh.virtual_ip}")
                 asyncio.create_task(self.broadcast_to_web('game_state', {'state': asdict(self.game_state)}))
                 # Send state to opponent
                 asyncio.create_task(self.send_game_state())
@@ -97,6 +99,7 @@ class WebGame:
                 self.game_state.game_started = state_data.get('game_started', False)
                 self.game_state.game_over = state_data.get('game_over', False)
                 self.game_state.winner = state_data.get('winner')
+                print(f"[STATE] Updated. Turn: {self.game_state.current_turn}, My IP: {self.game_state.my_ip}")
                 asyncio.create_task(self.broadcast_to_web('game_state', {'state': asdict(self.game_state)}))
                 
         elif msg_type == 'game_move':
@@ -106,7 +109,7 @@ class WebGame:
             if self.game_state and row is not None and col is not None:
                 symbol = 'O' if self.game_state.is_host else 'X'
                 self.game_state.board[row][col] = symbol
-                self.game_state.current_turn = self.mesh.virtual_ip
+                self.game_state.current_turn = self.mesh.virtual_ip  # Now it's my turn
                 
                 # Check for winner
                 winner = self.check_winner()
@@ -116,7 +119,8 @@ class WebGame:
                 elif self.is_draw():
                     self.game_state.game_over = True
                     self.game_state.winner = 'draw'
-                    
+                
+                print(f"[MOVE] Opponent played. Now my turn: {self.game_state.current_turn}")
                 asyncio.create_task(self.broadcast_to_web('game_state', {'state': asdict(self.game_state)}))
                 if self.game_state.is_host:
                     asyncio.create_task(self.send_game_state())

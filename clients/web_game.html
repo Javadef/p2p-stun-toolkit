@@ -512,7 +512,7 @@
             document.getElementById('connectBtn').disabled = true;
             document.getElementById('connectBtn').textContent = '⏳ Connecting...';
             
-            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port || 8080}/ws`);
             
             ws.onopen = () => {
                 ws.send(JSON.stringify({
