@@ -301,14 +301,19 @@ async def handle_ws_message(ws: web.WebSocketResponse, data: dict):
 
 async def index_handler(request):
     """Serve the main HTML page"""
-    return web.FileResponse('./web_game.html')
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), 'web_game.html')
+    return web.FileResponse(html_path)
 
 
 async def init_app():
+    import os
+    static_path = os.path.join(os.path.dirname(__file__), 'static')
     app = web.Application()
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)
-    app.router.add_static('/static/', './static/')
+    if os.path.exists(static_path):
+        app.router.add_static('/static/', static_path)
     return app
 
 

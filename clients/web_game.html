@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Tic-Tac-Toe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #a0a0a0;
+            font-size: 1rem;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #e94560;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.connected {
+            background: #44ff44;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 0 0 2px #e94560;
+        }
+        
+        input::placeholder {
+            color: #666;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            color: #fff;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(233, 69, 96, 0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .info-box {
+            background: rgba(233, 69, 96, 0.1);
+            border: 1px solid rgba(233, 69, 96, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+        
+        .info-box code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        
+        .peer-list {
+            list-style: none;
+        }
+        
+        .peer-list li {
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .peer-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        /* Game Board */
+        .game-container {
+            display: none;
+        }
+        
+        .game-container.active {
+            display: block;
+        }
+        
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 350px;
+            margin: 20px auto;
+        }
+        
+        .cell {
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .cell:hover:not(.taken) {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(233, 69, 96, 0.5);
+        }
+        
+        .cell.taken {
+            cursor: not-allowed;
+        }
+        
+        .cell.X {
+            color: #e94560;
+            text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+        }
+        
+        .cell.O {
+            color: #4ecdc4;
+            text-shadow: 0 0 20px rgba(78, 205, 196, 0.5);
+        }
+        
+        .cell.winning {
+            animation: winner 0.5s ease-in-out infinite alternate;
+        }
+        
+        @keyframes winner {
+            from { transform: scale(1); }
+            to { transform: scale(1.1); }
+        }
+        
+        .game-status {
+            text-align: center;
+            padding: 20px;
+            font-size: 1.3rem;
+        }
+        
+        .game-status.your-turn {
+            color: #44ff44;
+        }
+        
+        .game-status.waiting {
+            color: #ffaa00;
+        }
+        
+        .game-status.winner {
+            color: #e94560;
+            font-size: 1.5rem;
+            animation: winner 0.5s ease-in-out infinite alternate;
+        }
+        
+        .player-info {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        
+        .player {
+            text-align: center;
+            padding: 15px 25px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+        }
+        
+        .player.active {
+            border: 2px solid #e94560;
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+        }
+        
+        .player-symbol {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .player-symbol.X { color: #e94560; }
+        .player-symbol.O { color: #4ecdc4; }
+        
+        .player-label {
+            font-size: 0.8rem;
+            color: #a0a0a0;
+            margin-top: 5px;
+        }
+        
+        /* Invite Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 400px;
+            border: 1px solid rgba(233, 69, 96, 0.3);
+            animation: modalIn 0.3s ease-out;
+        }
+        
+        @keyframes modalIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        .modal h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #e94560;
+        }
+        
+        .modal p {
+            color: #a0a0a0;
+            margin-bottom: 20px;
+        }
+        
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+        
+        .toast {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease-out;
+            border-left: 3px solid #e94560;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 P2P Tic-Tac-Toe</h1>
+            <p class="subtitle">Play with friends through NAT!</p>
+        </header>
+        
+        <!-- Connection Panel -->
+        <div class="card" id="connectionPanel">
+            <h2>
+                <span class="status-dot" id="statusDot"></span>
+                Network Connection
+            </h2>
+            
+            <div id="connectForm">
+                <div class="form-group">
+                    <label>Network Name</label>
+                    <input type="text" id="networkName" value="game-network" placeholder="Enter network name">
+                </div>
+                <div class="form-group">
+                    <label>Secret Key</label>
+                    <input type="password" id="networkSecret" value="game-secret-123" placeholder="Shared secret">
+                </div>
+                <div class="form-group">
+                    <label>Connect to Peer (optional)</label>
+                    <input type="text" id="peerAddress" placeholder="ip:port (leave empty to host)">
+                </div>
+                <button class="btn btn-primary" id="connectBtn" onclick="connect()">
+                    🔗 Connect
+                </button>
+            </div>
+            
+            <div id="connectedInfo" class="hidden">
+                <div class="info-box">
+                    <strong>Your Address:</strong><br>
+                    <code id="myAddress">-</code>
+                    <br><br>
+                    <strong>Share with friends:</strong><br>
+                    <code id="shareLink">-</code>
+                </div>
+                
+                <h3 style="margin: 20px 0 10px;">Connected Peers</h3>
+                <ul class="peer-list" id="peerList">
+                    <li style="color: #666;">No peers connected yet</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Game Controls -->
+        <div class="card" id="gameControls">
+            <h2>🎯 Game Controls</h2>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="startGameBtn" onclick="startGame()" disabled>
+                    ▶️ Start New Game
+                </button>
+                <button class="btn btn-secondary" onclick="resetUI()">
+                    🔄 Reset
+                </button>
+            </div>
+        </div>
+        
+        <!-- Game Container -->
+        <div class="card game-container" id="gameContainer">
+            <h2>🎮 Game</h2>
+            
+            <div class="player-info">
+                <div class="player" id="playerX">
+                    <div class="player-symbol X">X</div>
+                    <div class="player-label" id="playerXLabel">Host</div>
+                </div>
+                <div class="player" id="playerO">
+                    <div class="player-symbol O">O</div>
+                    <div class="player-label" id="playerOLabel">Opponent</div>
+                </div>
+            </div>
+            
+            <div class="game-status" id="gameStatus">Waiting for opponent...</div>
+            
+            <div class="game-board" id="gameBoard">
+                <div class="cell" data-row="0" data-col="0" onclick="makeMove(0, 0)"></div>
+                <div class="cell" data-row="0" data-col="1" onclick="makeMove(0, 1)"></div>
+                <div class="cell" data-row="0" data-col="2" onclick="makeMove(0, 2)"></div>
+                <div class="cell" data-row="1" data-col="0" onclick="makeMove(1, 0)"></div>
+                <div class="cell" data-row="1" data-col="1" onclick="makeMove(1, 1)"></div>
+                <div class="cell" data-row="1" data-col="2" onclick="makeMove(1, 2)"></div>
+                <div class="cell" data-row="2" data-col="0" onclick="makeMove(2, 0)"></div>
+                <div class="cell" data-row="2" data-col="1" onclick="makeMove(2, 1)"></div>
+                <div class="cell" data-row="2" data-col="2" onclick="makeMove(2, 2)"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Invite Modal -->
+    <div class="modal" id="inviteModal">
+        <div class="modal-content">
+            <h3>🎮 Game Invite!</h3>
+            <p id="inviteFrom">Someone wants to play Tic-Tac-Toe with you!</p>
+            <div class="btn-group" style="justify-content: center;">
+                <button class="btn btn-primary" onclick="acceptInvite()">✅ Accept</button>
+                <button class="btn btn-secondary" onclick="declineInvite()">❌ Decline</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <script>
+        let ws = null;
+        let myIp = '';
+        let gameState = null;
+        let peers = [];
+        
+        function connect() {
+            const network = document.getElementById('networkName').value;
+            const secret = document.getElementById('networkSecret').value;
+            const peer = document.getElementById('peerAddress').value;
+            
+            document.getElementById('connectBtn').disabled = true;
+            document.getElementById('connectBtn').textContent = '⏳ Connecting...';
+            
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            
+            ws.onopen = () => {
+                ws.send(JSON.stringify({
+                    action: 'connect',
+                    network: network,
+                    secret: secret,
+                    peer: peer || null
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+            
+            ws.onclose = () => {
+                showToast('Disconnected from server');
+                resetUI();
+            };
+        }
+        
+        function handleMessage(data) {
+            console.log('Received:', data);
+            
+            switch (data.type) {
+                case 'connected':
+                    myIp = data.my_ip;
+                    document.getElementById('statusDot').classList.add('connected');
+                    document.getElementById('connectForm').classList.add('hidden');
+                    document.getElementById('connectedInfo').classList.remove('hidden');
+                    document.getElementById('myAddress').textContent = data.my_ip;
+                    document.getElementById('shareLink').textContent = data.external;
+                    document.getElementById('startGameBtn').disabled = false;
+                    updatePeerList(data.peers || []);
+                    showToast('Connected to network! 🎉');
+                    break;
+                    
+                case 'peer_connected':
+                    peers.push(data);
+                    updatePeerList(peers);
+                    showToast(`${data.ip} joined! 👋`);
+                    break;
+                    
+                case 'peer_disconnected':
+                    peers = peers.filter(p => p.ip !== data.ip);
+                    updatePeerList(peers);
+                    showToast(`${data.ip} left 👋`);
+                    break;
+                    
+                case 'invite':
+                    document.getElementById('inviteFrom').textContent = 
+                        `${data.from} wants to play Tic-Tac-Toe!`;
+                    document.getElementById('inviteModal').classList.add('active');
+                    break;
+                    
+                case 'waiting':
+                    document.getElementById('gameContainer').classList.add('active');
+                    document.getElementById('gameStatus').textContent = data.message;
+                    document.getElementById('gameStatus').className = 'game-status waiting';
+                    break;
+                    
+                case 'game_state':
+                    gameState = data.state;
+                    updateGameUI();
+                    break;
+            }
+        }
+        
+        function updatePeerList(peerList) {
+            peers = peerList;
+            const list = document.getElementById('peerList');
+            if (peerList.length === 0) {
+                list.innerHTML = '<li style="color: #666;">No peers connected yet</li>';
+            } else {
+                list.innerHTML = peerList.map(p => `
+                    <li>
+                        <div class="peer-avatar">${p.ip.split('.').pop()}</div>
+                        <div>
+                            <div>${p.ip}</div>
+                            <div style="font-size: 0.8rem; color: #666;">${p.external}</div>
+                        </div>
+                    </li>
+                `).join('');
+            }
+        }
+        
+        function updateGameUI() {
+            if (!gameState) return;
+            
+            document.getElementById('gameContainer').classList.add('active');
+            
+            // Update board
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const value = gameState.board[row][col];
+                cell.textContent = value;
+                cell.className = 'cell';
+                if (value) {
+                    cell.classList.add('taken', value);
+                }
+            });
+            
+            // Update player indicators
+            const isMyTurn = gameState.current_turn === gameState.my_ip;
+            document.getElementById('playerX').classList.toggle('active', 
+                (gameState.my_symbol === 'X' && isMyTurn) || (gameState.opponent_symbol === 'X' && !isMyTurn));
+            document.getElementById('playerO').classList.toggle('active',
+                (gameState.my_symbol === 'O' && isMyTurn) || (gameState.opponent_symbol === 'O' && !isMyTurn));
+            
+            // Update labels
+            document.getElementById('playerXLabel').textContent = gameState.my_symbol === 'X' ? 'You' : 'Opponent';
+            document.getElementById('playerOLabel').textContent = gameState.my_symbol === 'O' ? 'You' : 'Opponent';
+            
+            // Update status
+            const status = document.getElementById('gameStatus');
+            if (gameState.game_over) {
+                if (gameState.winner === 'draw') {
+                    status.textContent = "It's a draw! 🤝";
+                    status.className = 'game-status';
+                } else {
+                    const youWon = gameState.winner === gameState.my_symbol;
+                    status.textContent = youWon ? '🎉 You Win!' : '😔 You Lose!';
+                    status.className = 'game-status winner';
+                }
+            } else if (!gameState.game_started) {
+                status.textContent = 'Waiting for opponent...';
+                status.className = 'game-status waiting';
+            } else if (isMyTurn) {
+                status.textContent = 'Your turn! 🎯';
+                status.className = 'game-status your-turn';
+            } else {
+                status.textContent = 'Opponent\'s turn... ⏳';
+                status.className = 'game-status waiting';
+            }
+        }
+        
+        function startGame() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'start_game' }));
+            }
+        }
+        
+        function acceptInvite() {
+            document.getElementById('inviteModal').classList.remove('active');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'accept_invite' }));
+            }
+        }
+        
+        function declineInvite() {
+            document.getElementById('inviteModal').classList.remove('active');
+        }
+        
+        function makeMove(row, col) {
+            if (!gameState || gameState.game_over) return;
+            if (gameState.current_turn !== gameState.my_ip) return;
+            if (gameState.board[row][col]) return;
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'move', row: row, col: col }));
+            }
+        }
+        
+        function resetUI() {
+            document.getElementById('statusDot').classList.remove('connected');
+            document.getElementById('connectForm').classList.remove('hidden');
+            document.getElementById('connectedInfo').classList.add('hidden');
+            document.getElementById('gameContainer').classList.remove('active');
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('connectBtn').textContent = '🔗 Connect';
+            document.getElementById('startGameBtn').disabled = true;
+            
+            // Clear board
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.textContent = '';
+                cell.className = 'cell';
+            });
+            
+            gameState = null;
+            peers = [];
+        }
+        
+        function showToast(message) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
