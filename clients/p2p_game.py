@@ -42,6 +42,7 @@ class P2PGame:
     
     def _handle_game_message(self, from_ip: str, data):
         """Handle incoming game messages"""
+        print(f"[DEBUG GAME] Received from {from_ip}: {data}")  # Debug line
         if isinstance(data, dict) and 'game_type' in data:
             msg_type = data.get('msg_type')
             
