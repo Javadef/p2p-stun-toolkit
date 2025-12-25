@@ -77,14 +77,45 @@ p2p-stun-toolkit/
 - Python 3.8+
 - `pip install cryptography`
 
+## 🔍 Check Your NAT Type First!
+
+Before using P2P features, check your NAT type using [go-nats](https://github.com/pion/go-nats):
+
+```bash
+# Install
+go install github.com/pion/go-nats@latest
+
+# Or build from source
+git clone https://github.com/pion/go-nats
+cd go-nats
+go build
+
+# Run with your STUN server
+./go-nats -s 84.247.170.241:3478
+```
+
+Example output:
+```json
+{
+  "isNatted": true,
+  "mappingBehavior": 0,
+  "filteringBehavior": 2,
+  "portPreservation": true,
+  "natType": "Port-restricted cone NAT",
+  "externalIP": "213.230.82.108"
+}
+```
+
+> ⏱️ Note: Depending on your NAT type, detection may take ~8 seconds.
+
 ## 🌍 NAT Compatibility
 
-| NAT Type | P2P Support |
-|----------|-------------|
-| Full Cone | ✅ Full |
-| Restricted Cone | ✅ Full |
-| Port-Restricted Cone | ✅ Full |
-| Symmetric | ⚠️ Limited (needs TURN relay) |
+| NAT Type | P2P Support | go-nats filteringBehavior |
+|----------|-------------|---------------------------|
+| Full Cone | ✅ Full | 0 |
+| Restricted Cone | ✅ Full | 1 |
+| Port-Restricted Cone | ✅ Full | 2 |
+| Symmetric | ⚠️ Limited (needs TURN relay) | 3 |
 
 ## 🔐 Security Features
 
