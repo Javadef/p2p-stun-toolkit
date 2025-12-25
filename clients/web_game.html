@@ -173,6 +173,8 @@
         
         .peer-list {
             list-style: none;
+            max-height: 150px;
+            overflow-y: auto;
         }
         
         .peer-list li {
@@ -194,6 +196,21 @@
             align-items: center;
             justify-content: center;
             font-weight: bold;
+            font-size: 0.8rem;
+        }
+        
+        .peer-info {
+            flex: 1;
+        }
+        
+        .peer-name {
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .peer-ip {
+            font-size: 0.75rem;
+            color: #666;
         }
         
         /* Game Board */
@@ -286,6 +303,7 @@
             padding: 15px 25px;
             background: rgba(255, 255, 255, 0.05);
             border-radius: 15px;
+            min-width: 120px;
         }
         
         .player.active {
@@ -302,9 +320,14 @@
         .player-symbol.O { color: #4ecdc4; }
         
         .player-label {
-            font-size: 0.8rem;
-            color: #a0a0a0;
+            font-size: 0.9rem;
+            color: #fff;
             margin-top: 5px;
+        }
+        
+        .player-name-tag {
+            font-size: 0.75rem;
+            color: #a0a0a0;
         }
         
         /* Invite Modal */
@@ -407,6 +430,10 @@
             
             <div id="connectForm">
                 <div class="form-group">
+                    <label>Your Name</label>
+                    <input type="text" id="playerName" value="" placeholder="Enter your name">
+                </div>
+                <div class="form-group">
                     <label>Network Name</label>
                     <input type="text" id="networkName" value="game-network" placeholder="Enter network name">
                 </div>
@@ -425,16 +452,15 @@
             
             <div id="connectedInfo" class="hidden">
                 <div class="info-box">
-                    <strong>Your Address:</strong><br>
-                    <code id="myAddress">-</code>
-                    <br><br>
-                    <strong>Share with friends:</strong><br>
+                    <strong>👤 You:</strong> <span id="myNameDisplay">-</span><br>
+                    <strong>📍 Your Address:</strong> <code id="myAddress">-</code><br>
+                    <strong>🔗 Share with friends:</strong><br>
                     <code id="shareLink">-</code>
                 </div>
                 
-                <h3 style="margin: 20px 0 10px;">Connected Peers</h3>
+                <h3 style="margin: 20px 0 10px;">👥 Connected Players</h3>
                 <ul class="peer-list" id="peerList">
-                    <li style="color: #666;">No peers connected yet</li>
+                    <li style="color: #666;">No players connected yet</li>
                 </ul>
             </div>
         </div>
@@ -460,10 +486,12 @@
                 <div class="player" id="playerX">
                     <div class="player-symbol X">X</div>
                     <div class="player-label" id="playerXLabel">Host</div>
+                    <div class="player-name-tag" id="playerXName"></div>
                 </div>
                 <div class="player" id="playerO">
                     <div class="player-symbol O">O</div>
-                    <div class="player-label" id="playerOLabel">Opponent</div>
+                    <div class="player-label" id="playerOLabel">Guest</div>
+                    <div class="player-name-tag" id="playerOName"></div>
                 </div>
             </div>
             
@@ -501,13 +529,27 @@
     <script>
         let ws = null;
         let myIp = '';
+        let myName = '';
         let gameState = null;
         let peers = [];
         
+        // Generate random name on load
+        window.onload = () => {
+            const adjectives = ['Happy', 'Swift', 'Clever', 'Brave', 'Cool', 'Epic', 'Super', 'Mega'];
+            const nouns = ['Player', 'Gamer', 'Pro', 'Star', 'Ninja', 'Hero', 'Ace', 'Champ'];
+            const randomName = adjectives[Math.floor(Math.random() * adjectives.length)] + 
+                              nouns[Math.floor(Math.random() * nouns.length)] + 
+                              Math.floor(Math.random() * 100);
+            document.getElementById('playerName').value = randomName;
+        };
+        
         function connect() {
+            const name = document.getElementById('playerName').value || 'Player';
             const network = document.getElementById('networkName').value;
             const secret = document.getElementById('networkSecret').value;
             const peer = document.getElementById('peerAddress').value;
+            
+            myName = name;
             
             document.getElementById('connectBtn').disabled = true;
             document.getElementById('connectBtn').textContent = '⏳ Connecting...';
@@ -517,6 +559,7 @@
             ws.onopen = () => {
                 ws.send(JSON.stringify({
                     action: 'connect',
+                    name: name,
                     network: network,
                     secret: secret,
                     peer: peer || null
@@ -540,9 +583,11 @@
             switch (data.type) {
                 case 'connected':
                     myIp = data.my_ip;
+                    myName = data.my_name;
                     document.getElementById('statusDot').classList.add('connected');
                     document.getElementById('connectForm').classList.add('hidden');
                     document.getElementById('connectedInfo').classList.remove('hidden');
+                    document.getElementById('myNameDisplay').textContent = myName;
                     document.getElementById('myAddress').textContent = data.my_ip;
                     document.getElementById('shareLink').textContent = data.external;
                     document.getElementById('startGameBtn').disabled = false;
@@ -551,20 +596,26 @@
                     break;
                     
                 case 'peer_connected':
-                    peers.push(data);
-                    updatePeerList(peers);
-                    showToast(`${data.ip} joined! 👋`);
+                    // Check if peer already exists
+                    if (!peers.find(p => p.ip === data.ip)) {
+                        peers.push(data);
+                        updatePeerList(peers);
+                        showToast(`${data.name || data.ip} joined! 👋`);
+                    }
                     break;
                     
                 case 'peer_disconnected':
+                    const oldCount = peers.length;
                     peers = peers.filter(p => p.ip !== data.ip);
-                    updatePeerList(peers);
-                    showToast(`${data.ip} left 👋`);
+                    if (peers.length < oldCount) {
+                        updatePeerList(peers);
+                        showToast(`Player left 👋`);
+                    }
                     break;
                     
                 case 'invite':
                     document.getElementById('inviteFrom').textContent = 
-                        `${data.from} wants to play Tic-Tac-Toe!`;
+                        `${data.name || data.from} wants to play Tic-Tac-Toe!`;
                     document.getElementById('inviteModal').classList.add('active');
                     break;
                     
@@ -585,14 +636,14 @@
             peers = peerList;
             const list = document.getElementById('peerList');
             if (peerList.length === 0) {
-                list.innerHTML = '<li style="color: #666;">No peers connected yet</li>';
+                list.innerHTML = '<li style="color: #666;">No players connected yet</li>';
             } else {
                 list.innerHTML = peerList.map(p => `
                     <li>
-                        <div class="peer-avatar">${p.ip.split('.').pop()}</div>
-                        <div>
-                            <div>${p.ip}</div>
-                            <div style="font-size: 0.8rem; color: #666;">${p.external}</div>
+                        <div class="peer-avatar">${(p.name || 'P').charAt(0).toUpperCase()}</div>
+                        <div class="peer-info">
+                            <div class="peer-name">${p.name || 'Player-' + p.ip.split('.').pop()}</div>
+                            <div class="peer-ip">${p.ip}</div>
                         </div>
                     </li>
                 `).join('');
@@ -617,16 +668,27 @@
                 }
             });
             
-            // Update player indicators
+            // Determine if it's my turn
             const isMyTurn = gameState.current_turn === gameState.my_ip;
-            document.getElementById('playerX').classList.toggle('active', 
-                (gameState.my_symbol === 'X' && isMyTurn) || (gameState.opponent_symbol === 'X' && !isMyTurn));
-            document.getElementById('playerO').classList.toggle('active',
-                (gameState.my_symbol === 'O' && isMyTurn) || (gameState.opponent_symbol === 'O' && !isMyTurn));
             
-            // Update labels
-            document.getElementById('playerXLabel').textContent = gameState.my_symbol === 'X' ? 'You' : 'Opponent';
-            document.getElementById('playerOLabel').textContent = gameState.my_symbol === 'O' ? 'You' : 'Opponent';
+            // Update player indicators
+            document.getElementById('playerX').classList.toggle('active', 
+                (gameState.my_symbol === 'X' && isMyTurn) || (gameState.my_symbol === 'O' && !isMyTurn));
+            document.getElementById('playerO').classList.toggle('active',
+                (gameState.my_symbol === 'O' && isMyTurn) || (gameState.my_symbol === 'X' && !isMyTurn));
+            
+            // Update labels with names
+            if (gameState.my_symbol === 'X') {
+                document.getElementById('playerXLabel').textContent = 'You';
+                document.getElementById('playerXName').textContent = gameState.my_name;
+                document.getElementById('playerOLabel').textContent = 'Opponent';
+                document.getElementById('playerOName').textContent = gameState.opponent_name || '';
+            } else {
+                document.getElementById('playerXLabel').textContent = 'Opponent';
+                document.getElementById('playerXName').textContent = gameState.opponent_name || '';
+                document.getElementById('playerOLabel').textContent = 'You';
+                document.getElementById('playerOName').textContent = gameState.my_name;
+            }
             
             // Update status
             const status = document.getElementById('gameStatus');
@@ -646,7 +708,7 @@
                 status.textContent = 'Your turn! 🎯';
                 status.className = 'game-status your-turn';
             } else {
-                status.textContent = 'Opponent\'s turn... ⏳';
+                status.textContent = `${gameState.opponent_name || 'Opponent'}'s turn... ⏳`;
                 status.className = 'game-status waiting';
             }
         }
@@ -670,8 +732,14 @@
         
         function makeMove(row, col) {
             if (!gameState || gameState.game_over) return;
-            if (gameState.current_turn !== gameState.my_ip) return;
-            if (gameState.board[row][col]) return;
+            if (gameState.current_turn !== gameState.my_ip) {
+                showToast("Not your turn!");
+                return;
+            }
+            if (gameState.board[row][col]) {
+                showToast("Cell already taken!");
+                return;
+            }
             
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ action: 'move', row: row, col: col }));
