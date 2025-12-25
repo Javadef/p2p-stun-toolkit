@@ -24,6 +24,7 @@ import threading
 import argparse
 import hashlib
 import time
+import asyncio
 from ctypes import wintypes
 
 # Check admin rights
@@ -80,7 +81,6 @@ class WinTun:
             print("=" * 60)
             print("\nDownload from: https://www.wintun.net/")
             print("Extract and place wintun.dll in:", os.path.dirname(__file__))
-            print("\nOr use the simpler alternative: p2p_vpn_simple.py")
             sys.exit(1)
         
         self.wintun = ctypes.CDLL(dll_path)
@@ -198,6 +198,7 @@ class P2PVPN:
         self.my_vpn_ip = None
         self.peer_vpn_ips = {}  # mesh_ip -> vpn_ip
         self.running = False
+        self.loop = None
         
         # Generate encryption key from secret
         kdf = PBKDF2HMAC(
@@ -216,8 +217,8 @@ class P2PVPN:
         parts = mesh_ip.split('.')
         return f"10.147.{parts[2]}.{parts[3]}"
     
-    def start(self, peer_address: str = None):
-        """Start the P2P VPN"""
+    async def start_async(self, peer_address: str = None):
+        """Start the P2P VPN (async version)"""
         print("\n" + "=" * 60)
         print("  P2P VPN for Minecraft - Starting...")
         print("=" * 60)
@@ -226,13 +227,22 @@ class P2PVPN:
         print("\n[1/4] Connecting to P2P mesh network...")
         self.mesh = MeshNetwork(self.network_name, self.secret)
         
-        if peer_address:
-            # Connect to existing network
-            host, port = peer_address.rsplit(':', 1)
-            self.mesh.connect_to_peer(host, int(port))
+        # Start mesh network
+        await self.mesh.start()
         
-        self.mesh.start()
-        time.sleep(2)  # Wait for STUN binding
+        # Wait for STUN binding
+        for i in range(10):
+            if self.mesh.external_ip:
+                break
+            print(f"    Waiting for STUN... ({i+1}/10)")
+            await asyncio.sleep(1)
+        
+        # Connect to peer if specified
+        if peer_address:
+            host, port = peer_address.rsplit(':', 1)
+            print(f"    Connecting to peer: {host}:{port}")
+            await self.mesh.connect_to_peer(host, int(port))
+            await asyncio.sleep(2)
         
         # Assign VPN IP
         self.my_vpn_ip = self._assign_vpn_ip(self.mesh.virtual_ip)
@@ -254,18 +264,22 @@ class P2PVPN:
         # Register message handler
         self.mesh.on_message = self._handle_mesh_message
         
-        # Start packet forwarding threads
+        # Start packet forwarding
         print("\n[4/4] Starting packet forwarding...")
         self.running = True
         
-        threading.Thread(target=self._tun_to_mesh, daemon=True).start()
-        threading.Thread(target=self._peer_discovery, daemon=True).start()
+        # Start TUN reader in thread (blocking I/O)
+        threading.Thread(target=self._tun_to_mesh_thread, daemon=True).start()
+        
+        external_addr = f"{self.mesh.external_ip}:{self.mesh.external_port}"
+        if not self.mesh.external_ip:
+            external_addr = "(STUN failed - try restarting)"
         
         print("\n" + "=" * 60)
         print("  P2P VPN READY!")
         print("=" * 60)
         print(f"\n  Your VPN IP: {self.my_vpn_ip}")
-        print(f"  Share this with friend: {self.mesh.external_ip}:{self.mesh.external_port}")
+        print(f"  Share this with friend: {external_addr}")
         print("\n  In Minecraft:")
         print("    1. Host opens to LAN")
         print("    2. Friend connects using Direct Connect")
@@ -273,51 +287,56 @@ class P2PVPN:
         print("\n  Press Ctrl+C to stop")
         print("=" * 60 + "\n")
         
-        # Broadcast our presence
-        self._broadcast_presence()
+        # Start peer discovery loop
+        asyncio.create_task(self._peer_discovery_loop())
         
+        # Keep running
         try:
             while self.running:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nShutting down...")
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+        finally:
             self.stop()
     
-    def _broadcast_presence(self):
+    async def _broadcast_presence(self):
         """Tell other peers our VPN IP"""
         msg = {
             'type': 'vpn_announce',
             'vpn_ip': self.my_vpn_ip,
             'mesh_ip': self.mesh.virtual_ip
         }
-        self.mesh.broadcast(msg)
+        await self.mesh.broadcast(msg)
     
-    def _handle_mesh_message(self, sender_ip: str, message: dict):
+    def _handle_mesh_message(self, sender_ip: str, message):
         """Handle messages from mesh network"""
-        msg_type = message.get('type')
-        
-        if msg_type == 'vpn_announce':
-            # Peer announcing their VPN IP
-            vpn_ip = message.get('vpn_ip')
-            mesh_ip = message.get('mesh_ip')
-            if vpn_ip and mesh_ip:
-                self.peer_vpn_ips[mesh_ip] = vpn_ip
-                print(f"[VPN] Peer discovered: {vpn_ip} (mesh: {mesh_ip})")
-                # Respond with our info
-                self._broadcast_presence()
-        
-        elif msg_type == 'vpn_packet':
-            # Encrypted IP packet from peer
-            try:
-                encrypted = message.get('data')
-                if encrypted:
-                    packet = self.fernet.decrypt(encrypted.encode())
-                    self.tun.send_packet(packet)
-            except Exception as e:
-                pass  # Ignore decrypt errors
+        # Handle dict or raw data
+        if isinstance(message, dict):
+            msg_type = message.get('type')
+            
+            if msg_type == 'vpn_announce':
+                # Peer announcing their VPN IP
+                vpn_ip = message.get('vpn_ip')
+                mesh_ip = message.get('mesh_ip')
+                if vpn_ip and mesh_ip and mesh_ip not in self.peer_vpn_ips:
+                    self.peer_vpn_ips[mesh_ip] = vpn_ip
+                    print(f"[VPN] Peer discovered: {vpn_ip} (mesh: {mesh_ip})")
+                    # Respond with our info (schedule in event loop)
+                    if self.loop:
+                        asyncio.run_coroutine_threadsafe(self._broadcast_presence(), self.loop)
+            
+            elif msg_type == 'vpn_packet':
+                # Encrypted IP packet from peer
+                try:
+                    encrypted = message.get('data')
+                    if encrypted:
+                        packet = self.fernet.decrypt(encrypted.encode())
+                        self.tun.send_packet(packet)
+                except Exception as e:
+                    pass  # Ignore decrypt errors
     
-    def _tun_to_mesh(self):
-        """Forward packets from TUN interface to mesh network"""
+    def _tun_to_mesh_thread(self):
+        """Forward packets from TUN interface to mesh network (runs in thread)"""
         while self.running:
             try:
                 packet = self.tun.receive_packet()
@@ -332,35 +351,36 @@ class P2PVPN:
                             target_mesh_ip = mesh_ip
                             break
                     
-                    if target_mesh_ip:
+                    if target_mesh_ip and self.loop:
                         # Encrypt and send via mesh
                         encrypted = self.fernet.encrypt(packet).decode()
-                        self.mesh.send_to(target_mesh_ip, {
-                            'type': 'vpn_packet',
-                            'data': encrypted
-                        })
+                        
+                        async def send_packet():
+                            await self.mesh.send(target_mesh_ip, {
+                                'type': 'vpn_packet',
+                                'data': encrypted
+                            })
+                        
+                        asyncio.run_coroutine_threadsafe(send_packet(), self.loop)
                 else:
                     time.sleep(0.001)
             except Exception as e:
                 if self.running:
                     time.sleep(0.01)
     
-    def _peer_discovery(self):
+    async def _peer_discovery_loop(self):
         """Periodically announce presence to find peers"""
         while self.running:
-            self._broadcast_presence()
-            time.sleep(10)
+            await self._broadcast_presence()
+            await asyncio.sleep(10)
     
     def stop(self):
         """Stop the VPN"""
+        print("\nShutting down VPN...")
         self.running = False
         if self.tun:
             self.tun.close()
-        if self.mesh:
-            self.mesh.stop()
 
-
-# ============= Main =============
 
 def main():
     parser = argparse.ArgumentParser(description='P2P VPN for Minecraft LAN Play')
@@ -381,7 +401,17 @@ def main():
         sys.exit(1)
     
     vpn = P2PVPN(args.network, args.secret)
-    vpn.start(peer_address=args.connect)
+    
+    # Create and store event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    vpn.loop = loop
+    
+    try:
+        loop.run_until_complete(vpn.start_async(peer_address=args.connect))
+    except KeyboardInterrupt:
+        print("\nStopping...")
+        vpn.stop()
 
 
 if __name__ == '__main__':

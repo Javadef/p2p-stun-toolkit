@@ -102,7 +102,7 @@ class MeshNetwork:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(('0.0.0.0', self.local_port))
-        self.sock.setblocking(False)
+        self.sock.settimeout(1.0)  # 1 second timeout for recvfrom
         
         self.local_port = self.sock.getsockname()[1]
         
@@ -129,11 +129,13 @@ class MeshNetwork:
         header = struct.pack('!HHI', msg_type, 0, MAGIC_COOKIE) + transaction_id
         
         loop = asyncio.get_event_loop()
-        await loop.sock_sendto(self.sock, header, (STUN_SERVER, STUN_PORT))
+        # Use run_in_executor for UDP sendto (works on all platforms)
+        await loop.run_in_executor(None, lambda: self.sock.sendto(header, (STUN_SERVER, STUN_PORT)))
         
         try:
+            # Use run_in_executor for UDP recvfrom
             data, _ = await asyncio.wait_for(
-                loop.sock_recvfrom(self.sock, 1024), timeout=5
+                loop.run_in_executor(None, lambda: self.sock.recvfrom(1024)), timeout=5
             )
             
             offset = 20
@@ -161,7 +163,8 @@ class MeshNetwork:
         
         while True:
             try:
-                data, addr = await loop.sock_recvfrom(self.sock, 65535)
+                # Use run_in_executor for UDP recvfrom (works on all platforms)
+                data, addr = await loop.run_in_executor(None, lambda: self.sock.recvfrom(65535))
                 await self._handle_packet(data, addr)
             except Exception as e:
                 await asyncio.sleep(0.1)
@@ -303,7 +306,8 @@ class MeshNetwork:
         data = json.dumps(msg).encode()
         encrypted = self.encrypt(data)
         loop = asyncio.get_event_loop()
-        await loop.sock_sendto(self.sock, encrypted, addr)
+        # Use run_in_executor for UDP sendto (works on all platforms)
+        await loop.run_in_executor(None, lambda: self.sock.sendto(encrypted, addr))
     
     async def connect_to_peer(self, ip: str, port: int):
         """Initiate connection to a peer"""
